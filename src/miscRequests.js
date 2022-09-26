@@ -333,6 +333,7 @@ module.exports = {
    * @prop {string} privateChannel User private channel
    * @prop {string} authToken User auth token
    * @prop {Date} joinDate Account creation date
+   * @prop {string} proPlan Account plan type
    */
 
   /**
@@ -383,6 +384,7 @@ module.exports = {
       privateChannel: data.user.private_channel,
       authToken: data.user.auth_token,
       joinDate: new Date(data.user.date_joined),
+      proPlan: data.user.pro_plan,
     };
   },
 
@@ -421,6 +423,7 @@ module.exports = {
         privateChannel: /"private_channel":"(.*?)"/.exec(data)?.[1],
         authToken: /"auth_token":"(.*?)"/.exec(data)?.[1],
         joinDate: new Date(/"date_joined":"(.*?)"/.exec(data)?.[1] || 0),
+        proPlan: /"pro_plan":"(.*?)"/.exec(data)?.[1],
       };
     }
 

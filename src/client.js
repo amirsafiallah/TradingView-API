@@ -30,25 +30,32 @@ const chartSessionGenerator = require('./chart/session');
 /**
  * @typedef { 'connected' | 'disconnected'
  *  | 'logged' | 'ping' | 'data'
- *  | 'error' | 'event'
+ *  | 'error' | 'event' | 'pingTimeout'
  * } ClientEvent
  */
 
 /** @class */
 module.exports = class Client {
+  /**
+   * @type WebSocket
+   */
   #ws;
+
+  #pingTimeout;
 
   #logged = false;
 
-  /** If the client is logged in */
-  get isLogged() {
-    return this.#logged;
-  }
+   #pingTimeoutHandler;
 
-  /** If the cient was closed */
-  get isOpen() {
-    return this.#ws.readyState === this.#ws.OPEN;
-  }
+   /** If the client is logged in */
+   get isLogged() {
+     return this.#logged;
+   }
+
+   /** If the cient was closed */
+   get isOpen() {
+     return this.#ws.readyState === this.#ws.OPEN;
+   }
 
   /** @type {SessionList} */
   #sessions = {};
@@ -56,6 +63,7 @@ module.exports = class Client {
   #callbacks = {
     connected: [],
     disconnected: [],
+    pingTimeout: [],
     logged: [],
     ping: [],
     data: [],
@@ -94,6 +102,15 @@ module.exports = class Client {
    */
   onDisconnected(cb) {
     this.#callbacks.disconnected.push(cb);
+  }
+
+  /**
+   * When ping timeout
+   * @param {() => void} cb Callback
+   * @event onPingTimeout
+   */
+  onPingTimeout(cb) {
+    this.#callbacks.pingTimeout.push(cb);
   }
 
   /**
@@ -161,6 +178,7 @@ module.exports = class Client {
       if (global.TW_DEBUG) console.log('§90§30§107 CLIENT §0 PACKET', packet);
       if (typeof packet === 'number') { // Ping
         this.#ws.send(protocol.formatWSPacket(`~h~${packet}`));
+        this.#startPingTimeout();
         this.#handleEvent('ping', packet);
         return;
       }
@@ -217,6 +235,7 @@ module.exports = class Client {
    * @prop {string} [signature] User auth token signature (in 'sessionid_sign' cookie)
    * @prop {boolean} [DEBUG] Enable debug mode
    * @prop {'data' | 'prodata' | 'widgetdata'} [server] Server type
+   * @prop {number} [pingTimeout] ping timeout in millisecond
    */
 
   /** Client object
@@ -224,6 +243,8 @@ module.exports = class Client {
    */
   constructor(clientOptions = {}) {
     if (clientOptions.DEBUG) global.TW_DEBUG = clientOptions.DEBUG;
+
+    this.#pingTimeout = clientOptions.pingTimeout || 15_000;
 
     const server = clientOptions.server || 'data';
     this.#ws = new WebSocket(`wss://${server}.tradingview.com/socket.io/websocket?&type=chart`, {
@@ -254,11 +275,13 @@ module.exports = class Client {
     }
 
     this.#ws.on('open', () => {
+      this.#startPingTimeout();
       this.#handleEvent('connected');
       this.sendQueue();
     });
 
     this.#ws.on('close', () => {
+      this.#stopPingTimeout();
       this.#logged = false;
       this.#handleEvent('disconnected');
     });
@@ -287,5 +310,20 @@ module.exports = class Client {
       if (this.#ws.readyState) this.#ws.close();
       cb();
     });
+  }
+
+  #startPingTimeout() {
+    if (this.#pingTimeoutHandler) {
+      clearTimeout(this.#pingTimeoutHandler);
+    }
+    this.#pingTimeoutHandler = setTimeout(() => {
+      this.#handleEvent('pingTimeout');
+    }, this.#pingTimeout);
+  }
+
+  #stopPingTimeout() {
+    if (this.#pingTimeoutHandler) {
+      clearTimeout(this.#pingTimeoutHandler);
+    }
   }
 };

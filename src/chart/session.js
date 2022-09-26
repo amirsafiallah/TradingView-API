@@ -43,7 +43,13 @@ const ChartTypes = {
 */
 
 /**
- * @typedef {'seriesLoaded' | 'symbolLoaded' | 'update' | 'error'} ChartEvent
+ * @typedef {
+ * 'seriesLoaded' |
+ * 'symbolLoaded' |
+ * 'seriesCompleted' |
+ * 'update' |
+ * 'candlesUpdate' |
+ * 'error'} ChartEvent
  */
 
 /**
@@ -54,6 +60,12 @@ const ChartTypes = {
  * @prop {number} max Period max value
  * @prop {number} min Period min value
  * @prop {number} volume Period volume value
+ */
+
+/**
+ * @typedef {Object} CandlesUpdate
+ * @prop {PricePeriod[]} candles Candles to update
+ * @prop {'du' | 'timescale_update'} type update type
  */
 
 /**
@@ -155,6 +167,8 @@ module.exports = (client) => class ChartSession {
   #callbacks = {
     seriesLoaded: [],
     symbolLoaded: [],
+    seriesCompleted: [],
+    candlesUpdate: [],
     update: [],
 
     replayLoaded: [],
@@ -201,18 +215,24 @@ module.exports = (client) => class ChartSession {
           return;
         }
 
+        if (packet.type === 'series_completed') {
+          this.#handleEvent('seriesCompleted', packet?.data?.[4] || {});
+          return;
+        }
+
         if (['timescale_update', 'du'].includes(packet.type)) {
           const changes = [];
 
           Object.keys(packet.data[1]).forEach((k) => {
             changes.push(k);
+            const candles = [];
             if (k === '$prices') {
               const periods = packet.data[1].$prices;
               if (!periods || !periods.s) return;
 
               periods.s.forEach((p) => {
                 [this.#chartSession.indexes[p.i]] = p.v;
-                this.#periods[p.v[0]] = {
+                const candle = {
                   time: p.v[0],
                   open: p.v[1],
                   close: p.v[4],
@@ -220,8 +240,13 @@ module.exports = (client) => class ChartSession {
                   min: p.v[3],
                   volume: Math.round(p.v[5] * 100) / 100,
                 };
+                this.#periods[p.v[0]] = candle;
+                candles.push(candle);
               });
-
+              this.#handleEvent('candlesUpdate', {
+                type: packet.type,
+                candles,
+              });
               return;
             }
 
@@ -469,6 +494,24 @@ module.exports = (client) => class ChartSession {
    */
   onSymbolLoaded(cb) {
     this.#callbacks.symbolLoaded.push(cb);
+  }
+
+  /**
+   * When a symbol has no more data to fetch
+   * @param {(status:{data_completed}) => void} cb
+   * @event
+   */
+  onSeriesCompleted(cb) {
+    this.#callbacks.seriesCompleted.push(cb);
+  }
+
+  /**
+   * When a candle update happens
+   * @param {(candlesUpdate: CandlesUpdate) => void} cb
+   * @event
+   */
+  onCandlesUpdate(cb) {
+    this.#callbacks.candlesUpdate.push(cb);
   }
 
   /**
