@@ -171,6 +171,7 @@ module.exports = (client) => class ChartSession {
     candlesUpdate: [],
     update: [],
 
+    replayDepth: [],
     replayLoaded: [],
     replayPoint: [],
     replayResolution: [],
@@ -287,6 +288,10 @@ module.exports = (client) => class ChartSession {
           return;
         }
 
+        if (packet.type === 'replay_depth') {
+          this.#handleEvent('replayDepth', packet.data[2]);
+        }
+
         if (packet.type === 'replay_instance_id') {
           this.#handleEvent('replayLoaded', packet.data[1]);
           return;
@@ -385,6 +390,13 @@ module.exports = (client) => class ChartSession {
       this.#client.send('replay_add_series', [
         this.#replaySessionID,
         'req_replay_addseries',
+        `=${JSON.stringify(symbolInit)}`,
+        options.timeframe,
+      ]);
+
+      this.#client.send('replay_get_depth', [
+        this.#replaySessionID,
+        'req_replay_getdepth',
         `=${JSON.stringify(symbolInit)}`,
         options.timeframe,
       ]);
@@ -521,6 +533,15 @@ module.exports = (client) => class ChartSession {
    */
   onUpdate(cb) {
     this.#callbacks.update.push(cb);
+  }
+
+  /**
+   * When the replay depth is taken
+   * @param {(timestamp: number) => void} cb
+   * @event
+   */
+  onReplayDepth(cb) {
+    this.#callbacks.replayDepth.push(cb);
   }
 
   /**
