@@ -33,6 +33,22 @@ describe('ReplayMode', () => {
     expect(chart.infos.full_name).toBe('BINANCE:BTCEUR');
   });
 
+  it('gets replay depth', async () => {
+    chart.setMarket('BINANCE:BTCEUR', {
+      timeframe: 'D',
+      replay: Math.round(Date.now() / 1000) - 86400 * 10,
+      range: 1,
+    });
+
+    const result = await new Promise((resolve) => {
+      chart.onReplayDepth((replayDepth) => {
+        resolve(replayDepth);
+      });
+    });
+
+    expect(result).toBeGreaterThan(0)
+  });
+
   it('steps forward manually', async () => {
     let finished = false;
 
